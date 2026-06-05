@@ -1,0 +1,355 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  RECRUITMENT_MANAGER
+  SALES_RECRUITER
+  TRAINING_MANAGER
+  TRAINER
+  MARKETING_MANAGER
+  DAY_MARKETING_RECRUITER
+  NIGHT_MARKETING_RECRUITER
+  PLACEMENT_MANAGER
+  FINANCE_ADMIN
+  CANDIDATE_CUSTOMER
+}
+
+enum Country {
+  USA
+  UK
+  CANADA
+}
+
+enum ShiftType {
+  DAY
+  NIGHT
+}
+
+enum InterviewType {
+  PHONE
+  VIDEO
+  ONSITE
+  TECHNICAL
+  HR
+  PANEL
+}
+
+enum InterviewResult {
+  PENDING
+  SELECTED
+  REJECTED
+  WAITING
+  NEXT_ROUND
+  NO_SHOW
+}
+
+enum PlacementType {
+  FULLTIME
+  CONTRACT
+  CONTRACT_TO_HIRE
+  PART_TIME
+}
+
+// ─── USERS ───────────────────────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  passwordHash  String
+  role          Role     @default(SALES_RECRUITER)
+  isActive      Boolean  @default(true)
+  country       Country?
+  shiftType     ShiftType?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  addedCandidates       Candidate[]       @relation("AddedBy")
+  assignedRecruitment   Candidate[]       @relation("AssignedRecruiter")
+  assignedTraining      CandidateTraining[] @relation("AssignedTrainer")
+  dayMarketingOf        CandidateMarketing[] @relation("DayRecruiter")
+  nightMarketingOf      CandidateMarketing[] @relation("NightRecruiter")
+  dayTeamLeadOf         CandidateMarketing[] @relation("DayTeamLead")
+  nightTeamLeadOf       CandidateMarketing[] @relation("NightTeamLead")
+  placementsAsRecruiter Placement[]       @relation("PlacementRecruiter")
+  placementsAsMarketer  Placement[]       @relation("PlacementMarketer")
+  placementsAsTrainer   Placement[]       @relation("PlacementTrainer")
+  activities            ActivityLog[]
+  notes                 Note[]
+  interviews            Interview[]       @relation("CreatedByUser")
+}
+
+// ─── STATUS CONFIGS ───────────────────────────────────────────────────────────
+
+model StatusConfig {
+  id        String   @id @default(cuid())
+  module    String   // recruitment | training | marketing | interview | placement
+  label     String
+  color     String   @default("#6366f1")
+  order     Int      @default(0)
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([module, label])
+}
+
+// ─── CANDIDATES ───────────────────────────────────────────────────────────────
+
+model Candidate {
+  id                  String   @id @default(cuid())
+  // Basic Info
+  firstName           String
+  lastName            String
+  email               String   @unique
+  phone               String?
+  country             Country
+  location            String?
+  linkedinUrl         String?
+  // Work Auth
+  workAuthorization   String?
+  visaType            String?
+  // Professional
+  technology          String?
+  yearsOfExperience   Int?
+  currentStatus       String?
+  currentCompany      String?
+  currentTitle        String?
+  // Resume
+  resumePath          String?
+  resumeParsedData    Json?
+  // Source
+  source              String?  // linkedin | referral | job_board | manual | upload
+  // Stripe
+  stripeCustomerId    String?  @unique
+  // Meta
+  addedById           String
+  addedBy             User     @relation("AddedBy", fields: [addedById], references: [id])
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  assignedRecruiterId String?
+  assignedRecruiter   User?    @relation("AssignedRecruiter", fields: [assignedRecruiterId], references: [id])
+  recruitment         CandidateRecruitment?
+  training            CandidateTraining?
+  marketing           CandidateMarketing?
+  placement           Placement?
+  interviews          Interview[]
+  subscriptions       Subscription[]
+  payments            Payment[]
+  notes               Note[]
+  documents           Document[]
+  activities          ActivityLog[]
+}
+
+// ─── RECRUITMENT ──────────────────────────────────────────────────────────────
+
+model CandidateRecruitment {
+  id              String    @id @default(cuid())
+  candidateId     String    @unique
+  candidate       Candidate @relation(fields: [candidateId], references: [id])
+  status          String    @default("New Lead")
+  agreementSent   Boolean   @default(false)
+  agreementSigned Boolean   @default(false)
+  agreementSentAt DateTime?
+  agreementSignedAt DateTime?
+  followUpDate    DateTime?
+  sentToTraining  Boolean   @default(false)
+  sentToTrainingAt DateTime?
+  sentToMarketing Boolean   @default(false)
+  sentToMarketingAt DateTime?
+  teamLeadId      String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// ─── TRAINING ─────────────────────────────────────────────────────────────────
+
+model CandidateTraining {
+  id                  String    @id @default(cuid())
+  candidateId         String    @unique
+  candidate           Candidate @relation(fields: [candidateId], references: [id])
+  trainerId           String?
+  trainer             User?     @relation("AssignedTrainer", fields: [trainerId], references: [id])
+  status              String    @default("Evaluation")
+  technicalRating     Int?      // 1-5
+  communicationRating Int?      // 1-5
+  confidenceRating    Int?      // 1-5
+  trainerFeedback     String?
+  mockInterviewFeedback String?
+  readyForMarketing   Boolean   @default(false)
+  readyAt             DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+}
+
+// ─── MARKETING ────────────────────────────────────────────────────────────────
+
+model CandidateMarketing {
+  id                String    @id @default(cuid())
+  candidateId       String    @unique
+  candidate         Candidate @relation(fields: [candidateId], references: [id])
+  status            String    @default("In Marketing")
+  dayRecruiterId    String?
+  dayRecruiter      User?     @relation("DayRecruiter", fields: [dayRecruiterId], references: [id])
+  nightRecruiterId  String?
+  nightRecruiter    User?     @relation("NightRecruiter", fields: [nightRecruiterId], references: [id])
+  dayTeamLeadId     String?
+  dayTeamLead       User?     @relation("DayTeamLead", fields: [dayTeamLeadId], references: [id])
+  nightTeamLeadId   String?
+  nightTeamLead     User?     @relation("NightTeamLead", fields: [nightTeamLeadId], references: [id])
+  marketingStartDate DateTime?
+  pausedDate        DateTime?
+  restartDate       DateTime?
+  placementDate     DateTime?
+  candidateNotes    String?
+  clientVendorNotes String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// ─── INTERVIEWS ───────────────────────────────────────────────────────────────
+
+model Interview {
+  id              String         @id @default(cuid())
+  candidateId     String
+  candidate       Candidate      @relation(fields: [candidateId], references: [id])
+  type            String         // interview | screening | assessment
+  clientName      String?
+  vendorName      String?
+  jobTitle        String?
+  jobLocation     String?
+  scheduledAt     DateTime?
+  interviewType   InterviewType?
+  roundNumber     Int            @default(1)
+  status          String         @default("Scheduled")
+  feedback        String?
+  result          InterviewResult @default(PENDING)
+  nextStep        String?
+  createdById     String
+  createdBy       User           @relation("CreatedByUser", fields: [createdById], references: [id])
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+}
+
+// ─── PLACEMENT ────────────────────────────────────────────────────────────────
+
+model Placement {
+  id                  String        @id @default(cuid())
+  candidateId         String        @unique
+  candidate           Candidate     @relation(fields: [candidateId], references: [id])
+  clientName          String
+  vendorName          String?
+  jobTitle            String
+  country             Country
+  startDate           DateTime?
+  endDate             DateTime?
+  placementType       PlacementType @default(CONTRACT)
+  payRate             Float?
+  billRate            Float?
+  margin              Float?
+  status              String        @default("Offered")
+  recruiterId         String?
+  recruiter           User?         @relation("PlacementRecruiter", fields: [recruiterId], references: [id])
+  marketingRecruiterId String?
+  marketingRecruiter  User?         @relation("PlacementMarketer", fields: [marketingRecruiterId], references: [id])
+  trainerId           String?
+  trainer             User?         @relation("PlacementTrainer", fields: [trainerId], references: [id])
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+}
+
+// ─── PAYMENTS & SUBSCRIPTIONS ─────────────────────────────────────────────────
+
+model SubscriptionPlan {
+  id              String    @id @default(cuid())
+  name            String
+  stripePriceId   String    @unique
+  amount          Float
+  currency        String    @default("usd")
+  interval        String    @default("month") // month | year | one_time
+  description     String?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  subscriptions   Subscription[]
+}
+
+model Subscription {
+  id                    String    @id @default(cuid())
+  candidateId           String
+  candidate             Candidate @relation(fields: [candidateId], references: [id])
+  planId                String
+  plan                  SubscriptionPlan @relation(fields: [planId], references: [id])
+  stripeSubscriptionId  String    @unique
+  status                String    // active | canceled | paused | past_due | trialing
+  currentPeriodStart    DateTime?
+  currentPeriodEnd      DateTime?
+  canceledAt            DateTime?
+  pausedAt              DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  payments              Payment[]
+}
+
+model Payment {
+  id                  String    @id @default(cuid())
+  candidateId         String
+  candidate           Candidate @relation(fields: [candidateId], references: [id])
+  subscriptionId      String?
+  subscription        Subscription? @relation(fields: [subscriptionId], references: [id])
+  stripePaymentIntentId String? @unique
+  stripeInvoiceId     String?
+  amount              Float
+  currency            String    @default("usd")
+  status              String    // succeeded | failed | pending | refunded
+  invoiceUrl          String?
+  refundedAt          DateTime?
+  refundAmount        Float?
+  createdAt           DateTime  @default(now())
+}
+
+// ─── NOTES, DOCS, ACTIVITY ────────────────────────────────────────────────────
+
+model Note {
+  id          String    @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id])
+  authorId    String
+  author      User      @relation(fields: [authorId], references: [id])
+  module      String    // recruitment | training | marketing | general
+  content     String
+  createdAt   DateTime  @default(now())
+}
+
+model Document {
+  id          String    @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id])
+  name        String
+  path        String
+  type        String    // resume | agreement | certificate | other
+  uploadedAt  DateTime  @default(now())
+}
+
+model ActivityLog {
+  id          String    @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id])
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id])
+  module      String    // recruitment | training | marketing | interview | placement | payment | system
+  action      String
+  detail      String?
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+}
