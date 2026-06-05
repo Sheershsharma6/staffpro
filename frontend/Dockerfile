@@ -10,6 +10,8 @@ COPY . .
 RUN npm run build
 
 FROM nginx:alpine
+# Ensure CA certificates are available so nginx can validate upstream HTTPS
+RUN apk add --no-cache ca-certificates
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
