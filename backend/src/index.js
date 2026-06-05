@@ -26,7 +26,19 @@ if (!process.env.JWT_SECRET) {
 
 // Middleware
 app.use(helmet());
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true }));
+// Support a comma-separated list of allowed frontend origins via FRONTEND_URLS
+// or a single FRONTEND_URL. This is safer than using a wildcard '*' in production.
+const rawFrontendOrigins = process.env.FRONTEND_URLS || process.env.FRONTEND_URL || 'http://localhost:3000';
+const allowedOrigins = rawFrontendOrigins.split(',').map((s) => s.trim()).filter(Boolean);
+app.use(cors({
+  origin: function(origin, callback) {
+    // allow non-browser requests like curl/postman (no origin)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) return callback(null, true);
+    return callback(null, false);
+  },
+  credentials: true
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
