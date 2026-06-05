@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
+    "build": "echo \"No build step required for backend; use npm start or npm run dev\"",
     "prisma:migrate": "npx prisma migrate dev",
     "prisma:generate": "npx prisma generate",
     "prisma:seed": "node src/utils/seed.js"
